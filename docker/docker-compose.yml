@@ -1,0 +1,15 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-modbus}
+      POSTGRES_USER: ${DB_USER:-modbus}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-modbus}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+volumes:
+  db_data:

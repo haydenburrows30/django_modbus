@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Modbus Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/">Modbus</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav" aria-controls="nav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="nav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link active" href="/">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/admin/" target="_blank">Admin</a></li>
+          <li class="nav-item"><a class="nav-link" href="/api/devices/" target="_blank">API</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="h4 mb-0">Modbus Dashboard</h1>
+      <span class="text-muted">Auto-refresh every 2s</span>
+    </div>
+
+    <div class="row g-3">
+      {% for d in devices %}
+  <div class="col-12 col-md-6 col-xl-4" id="device-{{ d.id }}" data-device-id="{{ d.id }}" data-di-start="{{ d.di_start }}" data-ir-start="{{ d.ir_start }}" data-hr-start="{{ d.hr_start }}" data-coil-start="{{ d.coil_start }}" data-coil-count="{{ d.coil_count }}">
+        <div class="card h-100">
+          <div class="card-header">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold">{{ d.name }}</div>
+                <div class="text-muted small">{{ d.host }}:{{ d.port }} · unit {{ d.unit_id }}</div>
+              </div>
+              <div class="text-nowrap small">
+                <div class="input-group input-group-sm" style="width: 10rem;">
+                  <span class="input-group-text">Refresh</span>
+                  <input type="number" step="0.5" min="0.5" class="form-control" id="interval-{{ d.id }}" placeholder="2" />
+                  <span class="input-group-text">s</span>
+                </div>
+                <div class="d-flex gap-2 justify-content-end mt-1">
+                  <button class="btn btn-outline-secondary btn-sm" type="button" data-action="save-interval" data-device-id="{{ d.id }}">Save</button>
+                  <button class="btn btn-outline-primary btn-sm" type="button" data-action="refresh-now" data-device-id="{{ d.id }}">Refresh</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="text-muted small mb-2">Ranges: DI {{ d.di_start }}+{{ d.di_count }}, IR {{ d.ir_start }}+{{ d.ir_count }}, HR {{ d.hr_start }}+{{ d.hr_count }}, Coils {{ d.coil_start }}+{{ d.coil_count }}</div>
+            <div class="mb-2 small">Status: <span id="status-{{ d.id }}" class="badge text-bg-secondary">Loading…</span></div>
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle mb-3">
+                <tbody>
+                  <tr><th style="width: 11rem;">Discrete Inputs</th><td class="mono" id="di-{{ d.id }}"></td></tr>
+                  <tr><th>Input Registers</th><td class="mono" id="ir-{{ d.id }}"></td></tr>
+                  <tr><th>Holding Registers</th><td class="mono" id="hr-{{ d.id }}"></td></tr>
+                  <tr><th>Coils</th><td class="mono"><div id="coils-{{ d.id }}" class="d-flex flex-wrap gap-1"></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            {% if d.cards.all %}
+            <div class="row row-cols-1 row-cols-md-2 g-2 mb-2" id="cards-{{ d.id }}">
+              {% for c in d.cards.all %}
+              <div class="col">
+                <div class="border rounded p-2 h-100">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="small text-muted">{{ c.source|upper }} @ {{ c.address }}</div>
+                      <div class="fw-semibold">{{ c.name }}</div>
+                    </div>
+                    <div class="text-end">
+                      <div class="fs-5 mono" id="card-val-{{ d.id }}-{{ c.id }}">--</div>
+                      {% if c.unit_label %}<div class="small text-muted">{{ c.unit_label }}</div>{% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            <form class="row gy-2 gx-2 align-items-center coil-form" data-device-id="{{ d.id }}">
+              <div class="col-auto">
+                <label class="col-form-label" for="coil-start-{{ d.id }}">Start</label>
+              </div>
+              <div class="col-auto">
+                <input type="number" class="form-control form-control-sm" id="coil-start-{{ d.id }}" value="{{ d.coil_start }}" />
+              </div>
+              <div class="col-auto">
+                <label class="col-form-label" for="coil-values-{{ d.id }}">Values</label>
+              </div>
+              <div class="col">
+                <input type="text" class="form-control form-control-sm" id="coil-values-{{ d.id }}" placeholder="true,false,true" />
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-primary btn-sm" type="submit">Write</button>
+              </div>
+              <div class="col-12">
+                <small id="coil-msg-{{ d.id }}" class="text-muted"></small>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <div class="col-12">
+        <div class="alert alert-info">No enabled devices. Add them in <a href="/admin/" class="alert-link">/admin/</a>.</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <script>
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function fmtArr(a) { return Array.isArray(a) ? a.join(', ') : ''; }
+
+    // Local storage helpers for intervals
+    const DEFAULT_INTERVAL_MS = 2000;
+    function intervalKey(id) { return `modbus.device.${id}.intervalMs`; }
+    function getIntervalMs(id) {
+      const v = localStorage.getItem(intervalKey(id));
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 500 ? n : DEFAULT_INTERVAL_MS;
+    }
+    function setIntervalMs(id, ms) {
+      localStorage.setItem(intervalKey(id), String(ms));
+    }
+
+    async function refreshDevice(id) {
+      const statusEl = document.getElementById('status-' + id);
+      try {
+        const data = await fetchJSON(`/api/devices/${id}/last/`);
+        if (data.message === 'no data yet') {
+          statusEl.className = 'badge text-bg-secondary';
+          statusEl.textContent = 'No data yet';
+          return;
+        }
+        if (data.ok) {
+          statusEl.className = 'badge text-bg-success';
+          statusEl.textContent = `OK @ ${data.created_at}`;
+        } else {
+          statusEl.className = 'badge text-bg-danger';
+          statusEl.textContent = `ERR @ ${data.created_at}`;
+        }
+        document.getElementById('di-' + id).textContent = fmtArr(data.discrete_inputs);
+        document.getElementById('ir-' + id).textContent = fmtArr(data.input_registers);
+        document.getElementById('hr-' + id).textContent = fmtArr(data.holding_registers);
+        const card = document.getElementById('device-' + id);
+        const coilStart = Number(card.dataset.coilStart || 0);
+        renderCoils(id, coilStart, data.coils || []);
+
+  // Update configurable cards
+  updateCards(id, data);
+      } catch (e) {
+        statusEl.className = 'badge text-bg-danger';
+        statusEl.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function writeCoils(id) {
+      const start = parseInt(document.getElementById('coil-start-' + id).value, 10) || 0;
+      const raw = document.getElementById('coil-values-' + id).value || '';
+      const values = raw.split(',').map(s => s.trim()).filter(s => s.length)
+        .map(v => v.toLowerCase()).map(v => (v === 'true' || v === '1'));
+      const msgEl = document.getElementById('coil-msg-' + id);
+      msgEl.textContent = 'Writing…';
+      try {
+        const res = await fetch(`/api/devices/${id}/write_coils/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start, values })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          msgEl.className = 'text-success';
+          msgEl.textContent = 'Wrote OK';
+          await refreshDevice(id);
+        } else {
+          msgEl.className = 'text-danger';
+          msgEl.textContent = 'Error: ' + (data.error || res.statusText);
+        }
+      } catch (e) {
+        msgEl.className = 'text-danger';
+        msgEl.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    // Render coils as clickable buttons to toggle individual states
+    function renderCoils(id, startAddr, coils) {
+      const container = document.getElementById('coils-' + id);
+      container.innerHTML = '';
+      if (!Array.isArray(coils) || coils.length === 0) {
+        container.textContent = '';
+        return;
+      }
+      coils.forEach((val, idx) => {
+        const addr = startAddr + idx;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `btn btn-sm ${val ? 'btn-success' : 'btn-outline-secondary'} me-1 mb-1`;
+        btn.textContent = `${addr}:${val ? '1' : '0'}`;
+        btn.title = 'Click to toggle';
+        btn.addEventListener('click', async () => {
+          const newVal = !val;
+          // quick visual feedback
+          btn.disabled = true;
+          try {
+            await writeCoilsSingle(id, addr, newVal);
+            await refreshDevice(id);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    async function writeCoilsSingle(id, address, value) {
+      const res = await fetch(`/api/devices/${id}/write_coils/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start: address, values: [Boolean(value)] })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
+      return true;
+    }
+
+    // Per-device timers
+    const timers = new Map();
+
+    function updateCards(id, data) {
+      const container = document.getElementById('cards-' + id);
+      if (!container) return;
+      // Build quick lookup maps from arrays by absolute address
+      // We assume arrays start at configured starts; we need those starts:
+      const card = document.getElementById('device-' + id);
+      const diStart = Number(card?.dataset?.diStart || 0);
+      const irStart = Number(card?.dataset?.irStart || 0);
+      const hrStart = Number(card?.dataset?.hrStart || 0);
+      const coilStart = Number(card?.dataset?.coilStart || 0);
+      const di = data.discrete_inputs || [];
+      const ir = data.input_registers || [];
+      const hr = data.holding_registers || [];
+      const coils = data.coils || [];
+      container.querySelectorAll('[id^="card-val-" ]').forEach(el => {
+        // id format: card-val-<devId>-<cardId>
+        // find source/address from sibling DOM (stored via data attrs would be better)
+      });
+      // Iterate cards and compute values
+      container.querySelectorAll('[id^="card-val-" ]').forEach(valEl => {
+        const wrap = valEl.closest('.col');
+        // Extract source/address from preceding small text content
+        const meta = wrap?.querySelector('.small.text-muted')?.textContent || '';
+        const m = meta.match(/(HR|IR|DI|COIL)\s*@\s*(\d+)/i);
+        let out = '--';
+        if (m) {
+          const src = m[1].toLowerCase();
+          const addr = Number(m[2]);
+          if (src === 'di' && addr >= diStart) out = di[addr - diStart] ?? '--';
+          else if (src === 'ir' && addr >= irStart) out = ir[addr - irStart] ?? '--';
+          else if (src === 'hr' && addr >= hrStart) out = hr[addr - hrStart] ?? '--';
+          else if (src === 'coil' && addr >= coilStart) out = (coils[addr - coilStart] ?? '--');
+        }
+        valEl.textContent = (out === true) ? '1' : (out === false) ? '0' : String(out);
+      });
+    }
+    function startTimerForDevice(id) {
+      stopTimerForDevice(id);
+      const ms = getIntervalMs(id);
+      // Prefill input control
+      const input = document.getElementById('interval-' + id);
+      if (input && !input.value) input.value = (ms / 1000).toString();
+      // Immediate refresh then schedule
+      refreshDevice(id);
+      const handle = setInterval(() => refreshDevice(id), ms);
+      timers.set(id, handle);
+    }
+    function stopTimerForDevice(id) {
+      const handle = timers.get(id);
+      if (handle) clearInterval(handle);
+      timers.delete(id);
+    }
+
+    // Wire coil write forms without inline JS
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.coil-form').forEach(form => {
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const id = parseInt(form.dataset.deviceId, 10);
+          writeCoils(id);
+        });
+      });
+      // Wire interval save and refresh-now buttons
+      document.querySelectorAll('[data-action="save-interval"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.deviceId, 10);
+          const input = document.getElementById('interval-' + id);
+          const seconds = Number(input.value);
+          const ms = Math.max(500, Math.round(seconds * 1000));
+          setIntervalMs(id, ms);
+          startTimerForDevice(id);
+        });
+      });
+      document.querySelectorAll('[data-action="refresh-now"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.deviceId, 10);
+          refreshDevice(id);
+        });
+      });
+      // Initialize timers for all devices present
+      document.querySelectorAll('[id^="device-"]').forEach(card => {
+        const id = parseInt(card.dataset.deviceId || card.id.split('-')[1], 10);
+        startTimerForDevice(id);
+      });
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+</body>
+</html>

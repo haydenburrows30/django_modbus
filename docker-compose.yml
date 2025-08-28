@@ -1,0 +1,49 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-modbus}
+      POSTGRES_USER: ${DB_USER:-modbus}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-modbus}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  web:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-key}
+      DB_NAME: ${DB_NAME:-modbus}
+      DB_USER: ${DB_USER:-modbus}
+      DB_PASSWORD: ${DB_PASSWORD:-modbus}
+      DB_HOST: db
+      DB_PORT: 5432
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    ports:
+      - "8001:8000"
+    volumes:
+      - .:/app
+
+  poller:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-key}
+      DB_NAME: ${DB_NAME:-modbus}
+      DB_USER: ${DB_USER:-modbus}
+      DB_PASSWORD: ${DB_PASSWORD:-modbus}
+      DB_HOST: db
+      DB_PORT: 5432
+      POLL_INTERVAL: ${POLL_INTERVAL:-1.0}
+    command: ["/entrypoint.sh", "worker"]
+    volumes:
+      - .:/app
+
+volumes:
+  db_data:
