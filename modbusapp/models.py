@@ -77,3 +77,18 @@ class ModbusCard(models.Model):
 
     def __str__(self):
         return f"{self.device.name}: {self.name} ({self.source}@{self.address})"
+
+
+class ModbusActionCard(models.Model):
+    device = models.ForeignKey(ModbusDevice, on_delete=models.CASCADE, related_name='actions')
+    name = models.CharField(max_length=100)
+    start = models.IntegerField(help_text='Starting coil address to write')
+    open_values = models.JSONField(default=list, help_text='List of booleans to write for OPEN')
+    close_values = models.JSONField(default=list, help_text='List of booleans to write for CLOSE')
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['device_id', 'order', 'id']
+
+    def __str__(self):
+        return f"{self.device.name}: {self.name} (coils@{self.start})"

@@ -34,7 +34,7 @@
 
     <div class="row g-3">
       {% for d in devices %}
-  <div class="col-12 col-md-6 col-xl-4" id="device-{{ d.id }}" data-device-id="{{ d.id }}" data-di-start="{{ d.di_start }}" data-ir-start="{{ d.ir_start }}" data-hr-start="{{ d.hr_start }}" data-coil-start="{{ d.coil_start }}" data-coil-count="{{ d.coil_count }}">
+  <div class="col-12" id="device-{{ d.id }}" data-device-id="{{ d.id }}" data-di-start="{{ d.di_start }}" data-ir-start="{{ d.ir_start }}" data-hr-start="{{ d.hr_start }}" data-coil-start="{{ d.coil_start }}" data-coil-count="{{ d.coil_count }}">
         <div class="card h-100">
           <div class="card-header">
             <div class="d-flex justify-content-between align-items-start">
@@ -69,27 +69,6 @@
               </table>
             </div>
 
-            {% if d.cards.all %}
-            <div class="row row-cols-1 row-cols-md-2 g-2 mb-2" id="cards-{{ d.id }}">
-              {% for c in d.cards.all %}
-              <div class="col">
-                <div class="border rounded p-2 h-100">
-                  <div class="d-flex justify-content-between">
-                    <div>
-                      <div class="small text-muted">{{ c.source|upper }} @ {{ c.address }}</div>
-                      <div class="fw-semibold">{{ c.name }}</div>
-                    </div>
-                    <div class="text-end">
-                      <div class="fs-5 mono" id="card-val-{{ d.id }}-{{ c.id }}">--</div>
-                      {% if c.unit_label %}<div class="small text-muted">{{ c.unit_label }}</div>{% endif %}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            {% endif %}
-
             <form class="row gy-2 gx-2 align-items-center coil-form" data-device-id="{{ d.id }}">
               <div class="col-auto">
                 <label class="col-form-label" for="coil-start-{{ d.id }}">Start</label>
@@ -110,6 +89,54 @@
                 <small id="coil-msg-{{ d.id }}" class="text-muted"></small>
               </div>
             </form>
+
+            {% if d.actions.all %}
+            <div class="row row-cols-1 row-cols-md-2 g-2 mt-3" id="actions-{{ d.id }}">
+              {% for a in d.actions.all %}
+              <div class="col">
+                <div class="border rounded p-2 h-100">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="small text-muted">Coils @ {{ a.start }}</div>
+                      <div class="fw-semibold">{{ a.name }}</div>
+                    </div>
+                    <div class="text-end">
+                      <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-success" data-action="exec-open" data-device-id="{{ d.id }}" data-action-id="{{ a.id }}">Open</button>
+                        <button type="button" class="btn btn-outline-danger" data-action="exec-close" data-device-id="{{ d.id }}" data-action-id="{{ a.id }}">Close</button>
+                      </div>
+                      <div class="small text-muted mt-1" id="action-msg-{{ d.id }}-{{ a.id }}"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if d.cards.all %}
+            <div class="row row-cols-1 row-cols-md-2 g-2 mt-3" id="cards-{{ d.id }}">
+              {% for c in d.cards.all %}
+              <div class="col">
+                <div class="border rounded p-2 h-100">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="small text-muted">{{ c.source|upper }} @ {{ c.address }}</div>
+                      <div class="fw-semibold">{{ c.name }}</div>
+                    </div>
+                    <div class="text-end">
+                      <div class="fs-5 mono" id="card-val-{{ d.id }}-{{ c.id }}">--</div>
+                      {% if c.unit_label %}<div class="small text-muted">{{ c.unit_label }}</div>{% endif %}
+                    </div>
+                  </div>
+                  <div class="mt-2" style="height:120px">
+                    <canvas data-card-id="{{ c.id }}"></canvas>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -245,7 +272,7 @@
     // Per-device timers
     const timers = new Map();
 
-    function updateCards(id, data) {
+  function updateCards(id, data) {
       const container = document.getElementById('cards-' + id);
       if (!container) return;
       // Build quick lookup maps from arrays by absolute address
@@ -280,6 +307,67 @@
         }
         valEl.textContent = (out === true) ? '1' : (out === false) ? '0' : String(out);
       });
+      // Also refresh charts for these cards
+      refreshCardCharts(id);
+    }
+
+    // Simple chart cache
+    const cardCharts = new Map(); // key: `${deviceId}-${cardId}` -> {chart, lastSince}
+
+    async function refreshCardCharts(deviceId) {
+      const container = document.getElementById('cards-' + deviceId);
+      if (!container) return;
+      const canvases = container.querySelectorAll('canvas[data-card-id]');
+      await Promise.all(Array.from(canvases).map(async (cv) => {
+        const cardId = cv.dataset.cardId;
+        const key = `${deviceId}-${cardId}`;
+        const limit = 300;
+        const url = `/api/devices/${deviceId}/cards/${cardId}/series/?limit=${limit}`;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return;
+          const js = await res.json();
+          const pts = (js.series || []).filter(p => p.v !== null);
+          const labels = pts.map(p => new Date(p.t));
+          const data = pts.map(p => p.v);
+          const unit = js.unit || '';
+          if (!cardCharts.has(key)) {
+            const ctx = cv.getContext('2d');
+            const chart = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: js.name || '',
+                  data,
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.1)',
+                  tension: 0.2,
+                  pointRadius: 0,
+                  borderWidth: 2,
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                scales: {
+                  x: { type: 'time', time: { unit: 'minute' }, ticks: { maxTicksLimit: 5 } },
+                  y: { beginAtZero: false, title: { display: !!unit, text: unit } }
+                }
+              }
+            });
+            cardCharts.set(key, { chart });
+          } else {
+            const { chart } = cardCharts.get(key);
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = data;
+            chart.update('none');
+          }
+        } catch (e) {
+          // ignore
+        }
+      }));
     }
     function startTimerForDevice(id) {
       stopTimerForDevice(id);
@@ -324,6 +412,35 @@
           refreshDevice(id);
         });
       });
+      // Wire action cards (Open/Close)
+      document.querySelectorAll('[data-action="exec-open"], [data-action="exec-close"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const deviceId = parseInt(btn.dataset.deviceId, 10);
+          const actionId = parseInt(btn.dataset.actionId, 10);
+          const which = btn.dataset.action === 'exec-open' ? 'open' : 'close';
+          const msgEl = document.getElementById(`action-msg-${deviceId}-${actionId}`);
+          try {
+            msgEl.textContent = which === 'open' ? 'Opening…' : 'Closing…';
+            const res = await fetch(`/api/devices/${deviceId}/actions/${actionId}/execute/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ which })
+            });
+            const js = await res.json().catch(() => ({}));
+            if (res.ok && js.ok) {
+              msgEl.className = 'text-success small';
+              msgEl.textContent = (which === 'open' ? 'Opened' : 'Closed');
+              await refreshDevice(deviceId);
+            } else {
+              msgEl.className = 'text-danger small';
+              msgEl.textContent = js.error || 'Error';
+            }
+          } catch (e) {
+            msgEl.className = 'text-danger small';
+            msgEl.textContent = e.message;
+          }
+        });
+      });
       // Initialize timers for all devices present
       document.querySelectorAll('[id^="device-"]').forEach(card => {
         const id = parseInt(card.dataset.deviceId || card.id.split('-')[1], 10);
@@ -331,6 +448,9 @@
       });
     });
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 </body>
 </html>

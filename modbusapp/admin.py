@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ModbusDevice, PollResult, ModbusCard
+from .models import ModbusDevice, PollResult, ModbusCard, ModbusActionCard
 
 
 @admin.register(ModbusDevice)
@@ -38,5 +38,13 @@ class PollResultAdmin(admin.ModelAdmin):
 class ModbusCardAdmin(admin.ModelAdmin):
     list_display = ("device", "order", "name", "source", "address", "unit_label", "decimals")
     list_filter = ("device", "source")
+    search_fields = ("name",)
+    ordering = ("device", "order", "id")
+
+
+@admin.register(ModbusActionCard)
+class ModbusActionCardAdmin(admin.ModelAdmin):
+    list_display = ("device", "order", "name", "start")
+    list_filter = ("device",)
     search_fields = ("name",)
     ordering = ("device", "order", "id")
